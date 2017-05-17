@@ -1,0 +1,68 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(silgelib)
+theme_set(theme_roboto())
+
+```
+
+```{r}
+as_letras = read_csv("letras-topartistas-0.csv") %>% 
+    select(url_musica, letra = value) %>%
+    mutate(letra = gsub("\n", " ", letra))
+```
+
+```{r}
+palavras_raw = as_letras %>% 
+    unnest_tokens(word, letra) 
+palavras = palavras_raw %>% 
+    filter(nchar(word) > 3, 
+           !grepl("[0-9+]", word))
+```
+
+```{r}
+word_averages <- palavras %>%
+    group_by(url_musica) %>%
+    mutate(word_position = row_number() / n()) %>%
+    filter(!(word %in% c("intro", "refrão"))) %>% 
+    group_by(word) %>%
+    summarize(median_position = median(word_position),
+            number = n())
+
+```
+
+```{r}
+word_averages %>% 
+    ggplot(aes(x = number)) + 
+    geom_freqpoly() + 
+    scale_x_log10()
+
+word_averages %>%
+  filter(number >= 100) %>%
+  arrange(median_position)
+
+word_averages %>%
+    filter(number >= 100) %>%
+    ggplot(aes(x = median_position)) + 
+    geom_histogram()
+
+```
+
+```{r}
+ignorar = c("chico", "buarque", "intr", "introdução", "introd", "afinação", "capo", "versão", "album", "tuning", "standard", "tabbed", "angus", "abaixo", "transcribed", "dedilhado", "teclado", "verses", "version", "vocalização", "vibrato", "coda", "repete", "eadgbe", "final", "fade")
+
+word_averages %>%
+  filter(number >= 100, 
+         abs(median_position -.5) > .2, 
+         !(word %in% ignorar)) %>%
+  arrange(median_position)
+
+```
+
