@@ -1,11 +1,11 @@
 ---
-title: "R Notebook"
+title: "Letras, palavras e verbos na música brasileira"
 output: html_notebook
 editor_options: 
   chunk_output_type: inline
 ---
 
-```{r}
+```{r, warning=FALSE}
 library(tidyverse)
 library(tidytext)
 library(silgelib)
@@ -14,13 +14,37 @@ theme_set(theme_roboto())
 ```
 
 ```{r}
-as_letras = read_csv("letras-topartistas-0.csv") %>% 
-    select(url_musica, letra = value) %>%
-    mutate(letra = gsub("\n", " ", letra))
+letras_raw = tibble(arquivo = list.files("letras/", full.names = T)) %>% 
+    rowwise() %>% 
+    do(read_csv(.$arquivo, col_types = "cc")) %>% 
+    mutate(letra = gsub("\n", " ", letra), 
+           artista = strsplit(url_musica, split = "/")[[1]][4])
+
+estilos = read_csv("artista_musica_estilo.txt", 
+                   col_names = c("artista", "musica", "estilo"), 
+                   col_types = "ccc") %>% 
+    select(-musica)
+
+as_letras = letras_raw %>% 
+    left_join(estilos, by = "artista") %>% 
+    filter(!is.na(letra)) 
 ```
 
 ```{r}
-palavras_raw = as_letras %>% 
+as_letras %>% 
+    group_by(estilo) %>% 
+    count() %>% 
+    ggplot(aes(x = reorder(estilo, n), y = n)) + 
+    geom_col() + 
+    coord_flip()
+```
+
+Filtramos fora a música gospel. 
+
+```{r}
+palavras_raw = as_letras %>%
+    filter(estilo != "gospelreligioso") %>%
+    select(url_musica, letra) %>%
     unnest_tokens(word, letra) 
 palavras = palavras_raw %>% 
     filter(nchar(word) > 3, 
@@ -39,6 +63,10 @@ word_averages <- palavras %>%
 ```
 
 ```{r}
+ignorar = c("repeat", "repete", "ltda", "lyrics", "instrumental", "repete", "edições", "musical", "musicais", "site", "oficial", "fonte")
+word_averages = word_averages %>% 
+    filter(!(word %in% ignorar))
+
 word_averages %>% 
     ggplot(aes(x = number)) + 
     geom_freqpoly() + 
@@ -46,23 +74,81 @@ word_averages %>%
 
 word_averages %>%
   filter(number >= 100) %>%
-  arrange(median_position)
+  arrange(-number)
 
 word_averages %>%
-    filter(number >= 100) %>%
+    filter(number >= 75) %>%
     ggplot(aes(x = median_position)) + 
     geom_histogram()
 
 ```
 
 ```{r}
-ignorar = c("chico", "buarque", "intr", "introdução", "introd", "afinação", "capo", "versão", "album", "tuning", "standard", "tabbed", "angus", "abaixo", "transcribed", "dedilhado", "teclado", "verses", "version", "vocalização", "vibrato", "coda", "repete", "eadgbe", "final", "fade")
+# ignorar = c("chico", "buarque", "intr", "introdução", "introd", "afinação", "capo", "versão", "album", "tuning", "standard", "tabbed", "angus", "abaixo", "transcribed", "dedilhado", "teclado", "verses", "version", "vocalização", "vibrato", "coda", "repete", "eadgbe", "final", "fade", "acordes", "tuned", "pestana", "noel", "paul", "instrumental", "primeira", "ending", "tremolo", "tune", "________", "email", "tocada", "tocado", "http")
 
 word_averages %>%
   filter(number >= 100, 
-         abs(median_position -.5) > .2, 
-         !(word %in% ignorar)) %>%
+         abs(median_position -.5) > .18) %>%
   arrange(median_position)
+
+```
+
+## Ela é, ele é ...
+
+```{r}
+bigrams <- as_letras %>%
+    filter(estilo != "gospelreligioso") %>%
+    select(url_musica, letra) %>%
+    unnest_tokens(bigram, letra, token = "ngrams", n = 2, collapse = FALSE)
+
+bigrams_separated <- bigrams %>%
+    separate(bigram, c("word1", "word2"), sep = " ")
+he_she_words <- bigrams_separated %>%
+    filter(word1 %in% c("ele", "ela"))
+
+he_she_words
+```
+
+```{r}
+he_she_counts <- he_she_words %>%
+    count(word1, word2) %>%
+    spread(word1, n, fill = 0) %>%
+    mutate(total = ele + ela,
+           ele = (ele + 1) / sum(ele + 1),
+           ela = (ela + 1) / sum(ela + 1),
+           log_ratio = log2(ela / ele),
+           abs_ratio = abs(log_ratio)) %>%
+    filter(total > 50) %>% 
+    arrange(desc(log_ratio))
+
+he_she_counts
+```
+
+```{r}
+trigrams <- as_letras %>%
+    filter(estilo != "gospelreligioso") %>%
+    select(url_musica, letra) %>%
+    unnest_tokens(trigram, letra, token = "ngrams", n = 3, collapse = FALSE)
+
+trigrams_separated <- trigrams %>%
+    separate(trigram, c("word1", "word2", "word3"), sep = " ")
+eles_sao_words <- trigrams_separated %>%
+    filter(word1 %in% c("ele", "ela"), word2 == "é", nchar(word3) > 3)
+
+eles_sao_words
+
+eles_sao_counts <- eles_sao_words %>%
+    count(word1, word3) %>%
+    spread(word1, n, fill = 0) %>%
+    mutate(total = ele + ela,
+           ele = (ele + 1) / sum(ele + 1),
+           ela = (ela + 1) / sum(ela + 1),
+           log_ratio = log2(ela / ele),
+           abs_ratio = abs(log_ratio)) %>%
+    filter(total > 1) %>% 
+    arrange(desc(log_ratio))
+
+eles_sao_counts
 
 ```
 
