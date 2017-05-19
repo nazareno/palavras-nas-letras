@@ -19,13 +19,13 @@ for(i in seq_along(arquivos)){
         message(output_file, " já existe")
     } else {
         message("processando ", input_file)
-        urls = read_csv(input_file, col_names = "url_musica")
+        urls = read_csv(input_file, col_names = "url_musica", col_types = "c")
         letras = urls %>% 
             group_by(url_musica) %>% 
             do(tryCatch(tibble(letra = get_letra(.$url_musica)), 
                         error = function(e) data.frame(NA)))
         letras %>% 
-            select(-3) %>% 
+            select(-`NA.`) %>% 
             write_csv(output_file)
     }
 }
