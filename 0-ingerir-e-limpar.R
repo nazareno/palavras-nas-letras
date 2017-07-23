@@ -24,10 +24,24 @@ as_letras %>%
     geom_col() + 
     coord_flip()
 
-# Filtramos fora a música gospel. 
-palavras_raw = as_letras %>%
+# Filtramos fora a música gospel
+# devtools::install_github("mangothecat/franc")
+as_letras = as_letras %>% 
     filter(estilo != "gospelreligioso") %>%
-    select(url_musica, estilo, letra) %>%
+    rowwise() %>%
+    mutate(lingua = franc::franc(letra, whitelist = c("por", "eng", "spa", "ita", "und"))) 
+
+table(as_letras$lingua)
+
+# Filtramos fora linguas que não português.
+letras_pt = as_letras %>%
+    filter(lingua == "por") %>%
+    select(url_musica, estilo, letra)
+
+## -------------
+##  Unigramas
+## -------------
+palavras_raw = letras_pt %>%
     unnest_tokens(word, letra) 
 palavras = palavras_raw %>% 
     filter(nchar(word) > 2, 
@@ -39,13 +53,29 @@ word_averages = palavras %>%
     group_by(url_musica) %>%
     mutate(word_position = row_number() / n()) %>%
     group_by(url_musica, word) %>% 
-    summarise(word_position = median(word_position)) %>% 
+    summarise(word_position = median(word_position), 
+              repetitions = n()) %>% 
     ungroup() %>% 
     group_by(word) %>%
     summarize(median_position = median(word_position),
-              number = n())
-
+              number = n(), 
+              median_repetition = median(repetitions))
 write_csv(word_averages, "word_stats-all.csv")
+
+# por palavra x estilo
+word_averages_e = palavras %>%
+    group_by(url_musica) %>%
+    mutate(word_position = row_number() / n()) %>%
+    group_by(url_musica, estilo, word) %>% 
+    summarise(word_position = median(word_position), 
+              repetitions = n()) %>% 
+    ungroup() %>% 
+    group_by(word, estilo) %>%
+    summarize(median_position = median(word_position),
+              number = n(), 
+              median_repetition = median(repetitions))
+write_csv(word_averages_e, "word_stats-porestilo.csv")
+
 
 # Por raiz (= palavra + stemming)
 root_averages = palavras %>% 
@@ -62,3 +92,7 @@ root_averages = palavras %>%
               forms = paste(unique(forms), collapse = ", "))
 
 write_csv(root_averages, "root_stats-all.csv")
+
+## -------------
+##  Ele / Ela
+## -------------
